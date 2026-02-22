@@ -46,8 +46,8 @@
     <div id="addFundsForm" class="hidden">
       <input type="number" id="addAmount" placeholder="Cantidad USDT">
       <p>Conversión: <span id="addCUP">0</span> CUP</p>
-      <input type="text" id="txid" placeholder="TXID de la transacción">
-      <p>Enviar a: <strong>0xBEP20AddressFija</strong></p>
+      <input type="text" id="txid" placeholder="TXID / Hash de la transacción">
+      <p>Enviar a: <strong>0xb0273de49b0c429915D2004cfF35fE70D53C32A0</strong> (BEP20)</p>
       <button id="confirmAddBtn">Confirmar Depósito</button>
     </div>
 
@@ -70,7 +70,7 @@
 </div>
 
 <script>
-// ----- Funciones básicas -----
+// ----- Configuración -----
 const RATE = 605; // 1 USDT = 605 CUP
 let currentUser = null;
 
@@ -124,12 +124,14 @@ document.getElementById('registerBtn').onclick = () => {
   if (loadUser(email)) return showAuthMessage('Este correo ya está registrado.');
 
   let balanceUSDT = 0;
+  let usedPromo = false;
   if (promo === "ALEM5U") {
     balanceUSDT = 5; // Bono promocional
+    usedPromo = true;
     alert('Código promocional válido. Se ha agregado un bono de 5 USDT a tu saldo.');
   }
 
-  const user = { name, email, password: hash(password), balanceUSDT, history: [] };
+  const user = { name, email, password: hash(password), balanceUSDT, history: [], usedPromo };
   saveUser(user);
   showAuthMessage('Registro exitoso. Ahora puede iniciar sesión.', true);
 };
@@ -176,12 +178,15 @@ document.getElementById('confirmAddBtn').onclick = () => {
   const amount = parseFloat(document.getElementById('addAmount').value);
   const txid = document.getElementById('txid').value.trim();
   if (!amount || amount < 5) return alert('Depósito mínimo 5 USDT.');
-  if (!txid) return alert('TXID obligatorio.');
+  if (!txid) return alert('TXID / Hash obligatorio.');
   if ((amount + dailyTotal('deposit')) > 500) return alert('Excede el máximo diario.');
 
   const operation = { type: 'Depósito', amount, details: txid, status: 'Pendiente', date: new Date().toLocaleString() };
   currentUser.history.push(operation);
   currentUser.balanceUSDT += amount;
+
+  if (currentUser.usedPromo) currentUser.usedPromo = false; // desactivar bono para futuras recargas
+
   saveUser(currentUser);
   updateBalance();
   updateHistory();
@@ -202,8 +207,19 @@ document.getElementById('confirmWithdrawBtn').onclick = () => {
   const amount = parseFloat(document.getElementById('withdrawAmount').value);
   const card = document.getElementById('cardNumber').value.trim();
   const phone = document.getElementById('phoneNumber').value.trim();
+
   if (!amount || amount < 10) return alert('Retiro mínimo 10 USDT.');
   if (!card || !phone) return alert('Tarjeta y teléfono son obligatorios.');
+
+  // Validación: si solo tiene bono y no ha depositado, bloquear retiro
+  const totalDeposits = currentUser.history
+    .filter(op => op.type === 'Depósito')
+    .reduce((sum, op) => sum + op.amount, 0);
+
+  if (currentUser.balanceUSDT <= 5 && totalDeposits <= 5) {
+    return alert('Debes realizar un depósito mínimo de 5 USDT antes de poder retirar tu bono inicial.');
+  }
+
   if (amount > currentUser.balanceUSDT) return alert('Saldo insuficiente.');
   if ((amount + dailyTotal('withdraw')) > 300) return alert('Excede el máximo diario.');
 
@@ -232,4 +248,4 @@ function dailyTotal(type) {
 }
 </script>
 </body>
-</html>
+  </html>
