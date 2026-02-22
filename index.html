@@ -1,0 +1,235 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CRYPTO--CUP</title>
+<style>
+  body { font-family: Arial, sans-serif; background: #f4f4f9; margin: 0; padding: 0; }
+  .container { max-width: 500px; margin: 50px auto; background: #fff; padding: 20px; border-radius: 10px; box-shadow: 0 0 15px rgba(0,0,0,0.2); }
+  h1 { text-align: center; color: #2c3e50; }
+  input, button { width: 100%; padding: 10px; margin: 5px 0; border-radius: 5px; border: 1px solid #ccc; }
+  button { background: #2c3e50; color: #fff; border: none; cursor: pointer; }
+  button:hover { background: #34495e; }
+  .message { margin: 10px 0; padding: 10px; background: #e3f2fd; border-left: 5px solid #2196f3; }
+  .history { margin-top: 20px; border-top: 1px solid #ccc; padding-top: 10px; }
+  .history-item { border-bottom: 1px solid #eee; padding: 5px 0; }
+  .hidden { display: none; }
+</style>
+</head>
+<body>
+<div class="container" id="app">
+  <h1>CRYPTO--CUP</h1>
+
+  <!-- Registro / Login -->
+  <div id="auth">
+    <input type="text" id="name" placeholder="Nombre completo">
+    <input type="email" id="email" placeholder="Correo electrónico">
+    <input type="password" id="password" placeholder="Contraseña">
+    <input type="text" id="promoCode" placeholder="Código promocional (opcional)">
+    <button id="registerBtn">Registrar</button>
+    <button id="loginBtn">Iniciar sesión</button>
+    <div id="authMessage" class="message hidden"></div>
+  </div>
+
+  <!-- Dashboard -->
+  <div id="dashboard" class="hidden">
+    <h2>Bienvenido, <span id="userName"></span></h2>
+    <p>Saldo: <span id="balanceUSDT">0</span> USDT (~<span id="balanceCUP">0</span> CUP)</p>
+    <div class="message">
+      Todas las transferencias realizadas se reflejarán en su saldo en un período máximo de <strong>3 minutos</strong> tras la verificación. Le agradecemos su paciencia y le aseguramos que cada operación es registrada de forma segura y precisa.
+    </div>
+    <button id="addFundsBtn">Agregar Fondos</button>
+    <button id="withdrawFundsBtn">Retirar Fondos</button>
+
+    <!-- Formulario Agregar Fondos -->
+    <div id="addFundsForm" class="hidden">
+      <input type="number" id="addAmount" placeholder="Cantidad USDT">
+      <p>Conversión: <span id="addCUP">0</span> CUP</p>
+      <input type="text" id="txid" placeholder="TXID de la transacción">
+      <p>Enviar a: <strong>0xBEP20AddressFija</strong></p>
+      <button id="confirmAddBtn">Confirmar Depósito</button>
+    </div>
+
+    <!-- Formulario Retirar Fondos -->
+    <div id="withdrawFundsForm" class="hidden">
+      <input type="number" id="withdrawAmount" placeholder="Cantidad USDT">
+      <p>Conversión: <span id="withdrawCUP">0</span> CUP</p>
+      <input type="text" id="cardNumber" placeholder="Número de tarjeta">
+      <input type="text" id="phoneNumber" placeholder="Teléfono cubano (+53)">
+      <button id="confirmWithdrawBtn">Solicitar Retiro</button>
+    </div>
+
+    <!-- Historial -->
+    <div class="history">
+      <h3>Historial de Operaciones</h3>
+      <div id="historyList"></div>
+    </div>
+    <button id="logoutBtn">Cerrar sesión</button>
+  </div>
+</div>
+
+<script>
+// ----- Funciones básicas -----
+const RATE = 605; // 1 USDT = 605 CUP
+let currentUser = null;
+
+// Hash simple para contraseña
+function hash(str) {
+  let hash = 0;
+  for (let i = 0; i < str.length; i++) {
+    hash = ((hash << 5) - hash) + str.charCodeAt(i);
+    hash |= 0;
+  }
+  return hash;
+}
+
+// Guardar usuario
+function saveUser(user) {
+  localStorage.setItem(user.email, JSON.stringify(user));
+}
+
+// Cargar usuario
+function loadUser(email) {
+  const data = localStorage.getItem(email);
+  return data ? JSON.parse(data) : null;
+}
+
+// Actualizar saldo en pantalla
+function updateBalance() {
+  document.getElementById('balanceUSDT').textContent = currentUser.balanceUSDT.toFixed(2);
+  document.getElementById('balanceCUP').textContent = (currentUser.balanceUSDT * RATE).toFixed(2);
+}
+
+// Actualizar historial
+function updateHistory() {
+  const list = document.getElementById('historyList');
+  list.innerHTML = '';
+  currentUser.history.forEach(op => {
+    const div = document.createElement('div');
+    div.className = 'history-item';
+    div.innerHTML = `<strong>${op.type}</strong> | ${op.amount} USDT (~${(op.amount*RATE).toFixed(2)} CUP) | ${op.details} | ${op.status} | ${op.date}`;
+    list.appendChild(div);
+  });
+}
+
+// ----- Registro / Login -----
+document.getElementById('registerBtn').onclick = () => {
+  const name = document.getElementById('name').value.trim();
+  const email = document.getElementById('email').value.trim();
+  const password = document.getElementById('password').value;
+  const promo = document.getElementById('promoCode').value.trim().toUpperCase();
+
+  if (!name || !email || !password) return showAuthMessage('Todos los campos son obligatorios.');
+  if (loadUser(email)) return showAuthMessage('Este correo ya está registrado.');
+
+  let balanceUSDT = 0;
+  if (promo === "ALEM5U") {
+    balanceUSDT = 5; // Bono promocional
+    alert('Código promocional válido. Se ha agregado un bono de 5 USDT a tu saldo.');
+  }
+
+  const user = { name, email, password: hash(password), balanceUSDT, history: [] };
+  saveUser(user);
+  showAuthMessage('Registro exitoso. Ahora puede iniciar sesión.', true);
+};
+
+document.getElementById('loginBtn').onclick = () => {
+  const email = document.getElementById('email').value.trim();
+  const password = document.getElementById('password').value;
+  const user = loadUser(email);
+
+  if (!user || user.password !== hash(password)) return showAuthMessage('Correo o contraseña incorrectos.');
+  
+  currentUser = user;
+  showDashboard();
+};
+
+function showAuthMessage(msg, success=false) {
+  const m = document.getElementById('authMessage');
+  m.textContent = msg;
+  m.style.background = success ? '#d4edda' : '#f8d7da';
+  m.style.borderLeft = success ? '5px solid #28a745' : '5px solid #dc3545';
+  m.classList.remove('hidden');
+}
+
+// ----- Dashboard -----
+function showDashboard() {
+  document.getElementById('auth').classList.add('hidden');
+  document.getElementById('dashboard').classList.remove('hidden');
+  document.getElementById('userName').textContent = currentUser.name;
+  updateBalance();
+  updateHistory();
+}
+
+// ----- Agregar fondos -----
+document.getElementById('addFundsBtn').onclick = () => {
+  document.getElementById('addFundsForm').classList.toggle('hidden');
+};
+
+document.getElementById('addAmount').oninput = function() {
+  const val = parseFloat(this.value) || 0;
+  document.getElementById('addCUP').textContent = (val * RATE).toFixed(2);
+};
+
+document.getElementById('confirmAddBtn').onclick = () => {
+  const amount = parseFloat(document.getElementById('addAmount').value);
+  const txid = document.getElementById('txid').value.trim();
+  if (!amount || amount < 5) return alert('Depósito mínimo 5 USDT.');
+  if (!txid) return alert('TXID obligatorio.');
+  if ((amount + dailyTotal('deposit')) > 500) return alert('Excede el máximo diario.');
+
+  const operation = { type: 'Depósito', amount, details: txid, status: 'Pendiente', date: new Date().toLocaleString() };
+  currentUser.history.push(operation);
+  currentUser.balanceUSDT += amount;
+  saveUser(currentUser);
+  updateBalance();
+  updateHistory();
+  alert('Depósito agregado. Se reflejará en el saldo en unos minutos.');
+};
+
+// ----- Retirar fondos -----
+document.getElementById('withdrawFundsBtn').onclick = () => {
+  document.getElementById('withdrawFundsForm').classList.toggle('hidden');
+};
+
+document.getElementById('withdrawAmount').oninput = function() {
+  const val = parseFloat(this.value) || 0;
+  document.getElementById('withdrawCUP').textContent = (val * RATE).toFixed(2);
+};
+
+document.getElementById('confirmWithdrawBtn').onclick = () => {
+  const amount = parseFloat(document.getElementById('withdrawAmount').value);
+  const card = document.getElementById('cardNumber').value.trim();
+  const phone = document.getElementById('phoneNumber').value.trim();
+  if (!amount || amount < 10) return alert('Retiro mínimo 10 USDT.');
+  if (!card || !phone) return alert('Tarjeta y teléfono son obligatorios.');
+  if (amount > currentUser.balanceUSDT) return alert('Saldo insuficiente.');
+  if ((amount + dailyTotal('withdraw')) > 300) return alert('Excede el máximo diario.');
+
+  const operation = { type: 'Retiro', amount, details: `${card} / ${phone}`, status: 'Pendiente', date: new Date().toLocaleString() };
+  currentUser.history.push(operation);
+  currentUser.balanceUSDT -= amount;
+  saveUser(currentUser);
+  updateBalance();
+  updateHistory();
+  alert('Solicitud de retiro creada. Se procesará manualmente.');
+};
+
+// ----- Logout -----
+document.getElementById('logoutBtn').onclick = () => {
+  currentUser = null;
+  document.getElementById('dashboard').classList.add('hidden');
+  document.getElementById('auth').classList.remove('hidden');
+};
+
+// ----- Función auxiliar para límites diarios -----
+function dailyTotal(type) {
+  const today = new Date().toLocaleDateString();
+  return currentUser.history
+    .filter(op => op.type === (type === 'deposit' ? 'Depósito' : 'Retiro') && op.date.includes(today))
+    .reduce((sum, op) => sum + op.amount, 0);
+}
+</script>
+</body>
+</html>
